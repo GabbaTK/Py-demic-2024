@@ -1,0 +1,5 @@
+C:\Users\Gabriel\Documents\Program\Natjecanje\Razvoj\Virus spread simulation 2024\updated\C#\Py-demic\Py-demic\bin\Release\Py-demic.exe
+C:\Users\Gabriel\Documents\Program\Natjecanje\Razvoj\Virus spread simulation 2024\updated\C#\Py-demic\Py-demic\bin\Release\Py-demic.dll
+C:\Users\Gabriel\Documents\Program\Natjecanje\Razvoj\Virus spread simulation 2024\updated\C#\Py-demic\Py-demic\bin\Release\Py-demic.deps.json
+C:\Users\Gabriel\Documents\Program\Natjecanje\Razvoj\Virus spread simulation 2024\updated\C#\Py-demic\Py-demic\bin\Release\Py-demic.runtimeconfig.json
+C:\Users\Gabriel\Documents\Program\Natjecanje\Razvoj\Virus spread simulation 2024\updated\C#\Py-demic\Py-demic\bin\Release\Py-demic.pdb
