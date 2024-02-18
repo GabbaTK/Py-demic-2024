@@ -15,6 +15,8 @@
         public bool canBeInfected;
         public double timeTillChange;
         public bool vaccineInfinite;
+        public double coughTimeDelay;
+        public double coughInfectionDelay;
 
         private bool wallColliding(Bitmap canvas, int x, int y)
         {
@@ -31,7 +33,7 @@
             return Math.Sqrt(distanceX * distanceX + distanceY * distanceY);
         }
 
-        private bool randomChance(int chance)
+        private bool randomChance(double chance)
         {
             Random rand = new();
 
@@ -47,6 +49,64 @@
 
             return (now - currentYear).TotalSeconds;
         }
+        
+        private void infectByCough(Model model)
+        {
+            if (this.coughInfectionDelay < time())
+            {
+                this.coughTimeDelay = time() + 1 + model.modelRandomness(); // 1 is for 1 second so it must wait 1 second before checking if it can be infected
+
+                foreach (Dictionary<String, Double> cough in model.coughs)
+                {
+                    double distanceX = Math.Abs(this.x - cough["x"]);
+                    double distanceY = Math.Abs(this.y - cough["y"]);
+
+                    double distance = Math.Sqrt(distanceX * distanceX + distanceY * distanceY);
+
+                    // Not in the cough zone
+                    if (distance > model.coughRange) { continue; }
+
+                    double scaledDistance = distance / model.coughRange; // scaledDistance is a 0 to 1 distance, 1 being at the edge, and 0 in the middle
+
+                    // Get the chance between the dropoff[0] and dropoff[1]
+                    double chance = (model.coughInfectionDropoff[1] - model.coughInfectionDropoff[0]) * scaledDistance + model.coughInfectionDropoff[0];
+
+                    if (randomChance(chance))
+                    {
+                        // Infected by the cough
+                        this.type = "infected";
+                        if (randomChance(model.infectiveChance)) { this.canInfect = true; this.color = new int[] { 255, 0, 0 }; } else { this.canInfect = false; this.color = new int[] { 150, 0, 0 }; }
+                        this.canBeInfected = false;
+                        this.timeTillChange = time() + (model.infectedTime * model.secondsPerDay) + model.modelRandomness();
+
+                        return;
+                    }
+                }
+            }
+        }
+
+        private Dictionary<String, Double>? createCough(Model model)
+        {
+            // Will not cough
+            if (!randomChance(model.coughChance)) { return null; }
+
+            // Will cough
+            if (this.coughTimeDelay < time())
+            {
+                this.coughTimeDelay = time() + 1 + model.modelRandomness(); // 1 is for 1 second so it must wait 1 second before coughing first
+
+                Dictionary<String, Double> cough = new()
+                {
+                    { "x", this.x },
+                    { "y", this.y },
+                    { "time", time() + model.coughTime }
+                };
+
+                return cough;
+            }
+
+            return null;
+        }
 
         private void stepType(Model model)
         {
@@ -58,7 +118,7 @@
                     this.color = new int[] { 255, 255, 255 };
                     this.canInfect = false;
                     this.canBeInfected = false;
-                    this.timeTillChange = time() + model.healedTime + model.modelRandomness();
+                    this.timeTillChange = time() + (model.healedTime * model.secondsPerDay) + model.modelRandomness();
 
                     if (randomChance(model.lethalityChance))
                     {
@@ -149,10 +209,9 @@
                         if (person.canInfect)
                         {
                             this.type = "infected";
-                            this.color = new int[] { 255, 0, 0 };
+                            if (randomChance(model.infectiveChance)) { this.canInfect = true; this.color = new int[] { 255, 0, 0 }; } else { this.canInfect = false; this.color = new int[] { 150, 0, 0 }; }
                             this.canBeInfected = false;
-                            this.canInfect = randomChance(model.infectiveChance);
-                            this.timeTillChange = time() + model.infectedTime + model.modelRandomness();
+                            this.timeTillChange = time() + (model.infectedTime * model.secondsPerDay) + model.modelRandomness();
                         }
                     }
                 }
@@ -186,15 +245,26 @@
 
         public void step(Model model)
         {
-            // Events regardless of type
-            move(model.peopleTravelSpeed);
-            changeGoto(model);
-
             // Events if type is alive
             if (this.type != "dead")
             {
+                move(model.peopleTravelSpeed);
+                changeGoto(model);
                 stepType(model);
                 checkColision(model);
+            }
+
+            // Events if can infect
+            if (this.canInfect)
+            {
+                Dictionary<String, Double>? cough = createCough(model);
+                if (cough != null) { model.coughs.Add(cough); }
+            }
+
+            // Events if type is normal
+            if (this.type == "normal")
+            {
+                infectByCough(model);
             }
         }
     }

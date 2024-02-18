@@ -1,4 +1,19 @@
-﻿using Py_demic.Properties;
+﻿/*
+ * TODO:
+ * 
+ * - Više simulacija u isto vrijeme (simulacija gradova)
+ *      - Putovanje između gradova
+ * - Karantena
+ * 
+ */
+
+
+
+
+
+
+
+using Py_demic.Properties;
 using System.Text.Json;
 
 namespace Py_demic
@@ -17,14 +32,26 @@ namespace Py_demic
         public int randomness = 0;
         public int infectedTime;
         public int healedTime;
-        public int infectiveChance = 100;
-        public int lethalityChance = 0;
+        public double infectiveChance = 100;
+        public double lethalityChance = 0;
         public int? vaccineTime;
-        public Person[]? people; // The actual people classes
+        public List<Person>? people = new(); // The actual people classes
         public int simulationRate = 45;
+        public int secondsPerDay = 5; // The number of seconds in a simulation day
+        public double coughChance = 0;
+        public int coughRange = 0;
+        public double coughTime = 0;
+        public List<int> coughInfectionDropoff = new() { 0, 0 };
+        public List<Dictionary<String, Double>> coughs = new();
 
         // Data for custom models
         public int infectedPercentage = 0;
+
+        // Statistic data
+        public int day = 0;
+        public double dayChange = 0;
+
+        private int lastDay = 0;
 
         // Variable used in multiple functions, so define it once
         private Color colorEmpty = Color.FromArgb(0, 0, 0, 0);
@@ -37,18 +64,11 @@ namespace Py_demic
             return (now - currentYear).TotalSeconds;
         }
 
-        private bool randomChance(int chance)
+        private bool randomChance(double chance)
         {
             double randomNum = rand.NextDouble() * 100;
 
             if (randomNum < chance) { return true; } else { return false; }
-        }
-
-        private bool wallColliding(Bitmap canvas, int x, int y)
-        {
-            Color pixelColor = canvas.GetPixel(x, y);
-            
-            if (pixelColor == colorEmpty) { return false; } else { return true; }
         }
 
         private Bitmap changeBitmapColor(Bitmap bitmap, Color newColor)
@@ -69,6 +89,45 @@ namespace Py_demic
             }
 
             return newBitmap;
+        }
+        private Bitmap drawPeople(Bitmap drawingBitmap)
+        {
+            //Bitmap drawingBitmap = (Bitmap)this.canvas.Clone();
+            Size personSize = new((int)(1000 * this.peopleScale), (int)(2000 * this.peopleScale)); // 1000 is width, 2000 is height, multiply them by the scale to get the size of the image
+            Bitmap personImageOrg = new(Resources.person, personSize);
+
+            using (Graphics drawingGraphics = Graphics.FromImage(drawingBitmap))
+            {
+                foreach (Person person in this.people)
+                {
+                    Bitmap personImage = changeBitmapColor(personImageOrg, Color.FromArgb(person.color[0], person.color[1], person.color[2]));
+
+                    // 500 is half of the person model width
+                    // 1000 is half of the person model height
+                    // The person.x/y is the center of the person, but DrawImage draws it from the start of the corner, so I need to subtract half of the scale from the position
+                    drawingGraphics.DrawImage(personImage, (int)(person.x - 500 * this.peopleScale), (int)(person.y - 1000 * this.peopleScale));
+
+                    personImage.Dispose();
+                }
+            }
+
+            return drawingBitmap;
+        }
+
+        private Bitmap drawCoughs()
+        {
+            Bitmap drawingBitmap = new(this.canvas);
+            Brush coughBrush = new SolidBrush(Color.FromArgb(127, 200, 20, 20));
+
+            using (Graphics drawingGraphics = Graphics.FromImage(drawingBitmap))
+            {
+                foreach (Dictionary<String, Double> cough in this.coughs)
+                {
+                    drawingGraphics.FillEllipse(coughBrush, (int)(cough["x"] - this.coughRange), (int)(cough["y"] - this.coughRange), this.coughRange * 2, this.coughRange * 2);
+                }
+            }
+
+            return drawingBitmap;
         }
 
         public string openModel(string modelName)
@@ -102,6 +161,7 @@ namespace Py_demic
             {
                 foreach (JsonElement drawLineJsonElement in model["lines"].EnumerateArray())
                 {
+                    // Converts a jsonElement containing Dictionary<String, JsonElement> to an actual Dictionary<String, JsonElement>
                     Dictionary<String, JsonElement> drawLine = drawLineJsonElement.EnumerateObject().ToDictionary(kvp => kvp.Name, kvp => kvp.Value);
 
                     if (!drawLine.ContainsKey("P1")) { return "P1"; }
@@ -146,11 +206,11 @@ namespace Py_demic
             // Non essential data
             if (model.ContainsKey("infective_chance"))
             {
-                this.infectiveChance = model["infective_chance"].GetInt32();
+                this.infectiveChance = model["infective_chance"].GetDouble();
             }
             if (model.ContainsKey("lethality_chance"))
             {
-                this.lethalityChance = model["lethality_chance"].GetInt32();
+                this.lethalityChance = model["lethality_chance"].GetDouble();
             }
             if (model.ContainsKey("vaccine_time"))
             {
@@ -159,6 +219,27 @@ namespace Py_demic
             if (model.ContainsKey("simulation_rate"))
             {
                 this.simulationRate = model["simulation_rate"].GetInt32();
+            }
+            if (model.ContainsKey("seconds_per_day"))
+            {
+                this.secondsPerDay = model["seconds_per_day"].GetInt32();
+            }
+            if (model.ContainsKey("cough_chance"))
+            {
+                this.coughChance = model["cough_chance"].GetDouble();
+            }
+            if (model.ContainsKey("cough_range"))
+            {
+                this.coughRange = model["cough_range"].GetInt32();
+            }
+            if (model.ContainsKey("cough_time"))
+            {
+                this.coughTime = model["cough_time"].GetDouble();
+            }
+            if (model.ContainsKey("cough_infection_dropoff"))
+            {
+                // Converts a jsonElement containing List<int> to an actual List<int>
+                this.coughInfectionDropoff = model["cough_infection_dropoff"].EnumerateArray().Select(element => element.GetInt32()).ToList();
             }
 
             this.type = "load";
@@ -233,9 +314,8 @@ namespace Py_demic
                                     {
                                         personSpawning.type = "infected";
                                         personSpawning.canBeInfected = false;
-                                        personSpawning.canInfect = randomChance(this.infectiveChance);
-                                        personSpawning.timeTillChange = time() + this.infectedTime + modelRandomness();
-                                        personSpawning.color = new int[] { 255, 0, 0 };
+                                        if (randomChance(this.infectiveChance)) { personSpawning.canInfect = true; personSpawning.color = new int[] { 255, 0, 0 }; } else { personSpawning.canInfect = false; personSpawning.color = new int[] { 150, 0, 0 }; }
+                                        personSpawning.timeTillChange = time() + (this.infectedTime * this.secondsPerDay) + modelRandomness();
                                     }
                                 }
                                 else if (area.ContainsKey("vaccinated"))
@@ -250,12 +330,12 @@ namespace Py_demic
                                         if (this.vaccineTime != null)
                                         {
                                             personSpawning.vaccineInfinite = false;
-                                            personSpawning.timeTillChange = time() + (double)this.vaccineTime + modelRandomness(); // I need to convert double? (double/null) to double
+                                            personSpawning.timeTillChange = time() + (double)(this.vaccineTime * this.secondsPerDay) + modelRandomness(); // I need to convert double? (double/null) to double
                                         }
                                     }
                                 }
 
-                                if (this.people == null) { this.people = new Person[] { personSpawning }; } else { this.people = this.people.Append(personSpawning).ToArray(); }
+                                this.people.Add(personSpawning);
 
                                 break;
                             }
@@ -324,11 +404,11 @@ namespace Py_demic
                                 personSpawning.type = "infected";
                                 personSpawning.canBeInfected = false;
                                 personSpawning.canInfect = true;
-                                personSpawning.timeTillChange = time() + this.infectedTime + modelRandomness();
+                                personSpawning.timeTillChange = time() + (this.infectedTime * this.secondsPerDay) + modelRandomness();
                                 personSpawning.color = new int[] { 255, 0, 0 };
                             }
 
-                            if (this.people == null) { this.people = new Person[] { personSpawning }; } else { this.people = this.people.Append(personSpawning).ToArray(); }
+                            this.people.Add(personSpawning);
 
                             break;
                         }
@@ -346,26 +426,45 @@ namespace Py_demic
             return value;
         }
 
-        public Bitmap drawPeople()
+        public void dayUpdate()
+        {
+            if (this.dayChange < time())
+            {
+                this.dayChange = time() + this.secondsPerDay;
+                this.day++;
+            }
+        }
+        
+        public void dayUpdatedStep(formResults form)
+        {
+            if (this.day != this.lastDay)
+            {
+                this.lastDay = this.day;
+
+                form.dayChange();
+            }
+        }
+
+        public Bitmap renderFrame()
         {
             Bitmap drawingBitmap = (Bitmap)this.canvas.Clone();
-            Size personSize = new((int)(1000 * this.peopleScale), (int)(2000 * this.peopleScale)); // 1000 is width, 2000 is height, multiply them by the scale to get the size of the image
-            Bitmap personImageOrg = new(Resources.person, personSize);
 
-            using (Graphics drawingGraphics = Graphics.FromImage(drawingBitmap))
+            // Remove the cough if the time has expired
+            List<Dictionary<String, Double>> unExpiredCoughs = new();
+
+            foreach (Dictionary<String, Double> cough in this.coughs)
             {
-                foreach (Person person in this.people)
+                if (cough["time"] > time())
                 {
-                    Bitmap personImage = changeBitmapColor(personImageOrg, Color.FromArgb(person.color[0], person.color[1], person.color[2]));
-
-                    // 500 is half of the person model width
-                    // 1000 is half of the person model height
-                    // The person.x/y is the center of the person, but DrawImage draws it from the start of the corner, so I need to subtract half of the scale from the position
-                    drawingGraphics.DrawImage(personImage, (int)(person.x - 500 * this.peopleScale), (int)(person.y - 1000 * this.peopleScale));
-
-                    personImage.Dispose();
+                    // Cough hasnt expired yet
+                    unExpiredCoughs.Add(cough);
                 }
             }
+
+            this.coughs = unExpiredCoughs;
+
+            drawingBitmap = drawCoughs();
+            drawingBitmap = drawPeople(drawingBitmap);
 
             return drawingBitmap;
         }

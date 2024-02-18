@@ -7,7 +7,6 @@ namespace Py_demic
         private string selectedModel    =   "custom";
         private Model model             =   new();
         private Translator translator   =   new();
-        private String language         =   "en";
 
         public formModel()
         {
@@ -38,7 +37,7 @@ namespace Py_demic
             if (openResult == "none") {
                 // Successfully opened model
 
-                lblCustomModel.Text = translator.translate("Change model:", language);
+                lblCustomModel.Text = translator.translate("Change model:");
                 if (selectedModel.Length <= 13)
                 {
                     lblCurrentModel.Text = selectedModel;
@@ -82,8 +81,8 @@ namespace Py_demic
             model.type = "custom";
 
             selectedModel = "custom";
-            lblCurrentModel.Text = translator.translate("custom", language);
-            lblCustomModel.Text = translator.translate("Custom model:", language);
+            lblCurrentModel.Text = translator.translate("custom");
+            lblCustomModel.Text = translator.translate("Custom model:");
 
             // Load the slider data to the model
             model.NOfpeople            =   trbNPeople.Value;
@@ -104,68 +103,75 @@ namespace Py_demic
 
         private void valChange_trbNPeople(object sender, EventArgs e)
         {
-            lblCustomNPeople.Text   =   String.Format(translator.translate("Number of people: {0}", language), trbNPeople.Value);
+            lblCustomNPeople.Text   =   String.Format(translator.translate("Number of people: {0}"), trbNPeople.Value);
             model.NOfpeople         =   trbNPeople.Value;
         }
 
         private void valChanged_trbPInfected(object sender, EventArgs e)
         {
-            lblCustomPInfected.Text = String.Format(translator.translate("Infected percent: {0}%", language), trbPInfected.Value);
+            lblCustomPInfected.Text = String.Format(translator.translate("Infected percent: {0}%"), trbPInfected.Value);
             model.infectedPercentage = trbPInfected.Value;
         }
 
         private void valChange_trbTInfected(object sender, EventArgs e)
         {
-            lblCustomTInfected.Text = String.Format(translator.translate("Infected time: {0} days", language), trbTInfected.Value);
+            lblCustomTInfected.Text = String.Format(translator.translate("Infected time: {0} days"), trbTInfected.Value);
             model.infectedTime = trbTInfected.Value;
         }
 
         private void valChange_trbTHealed(object sender, EventArgs e)
         {
-            lblCustomTHealed.Text = String.Format(translator.translate("Healed time: {0} days", language), trbTHealed.Value);
+            lblCustomTHealed.Text = String.Format(translator.translate("Healed time: {0} days"), trbTHealed.Value);
             model.healedTime = trbTHealed.Value;
         }
 
         private void click_btnChangeLanguage(object sender, EventArgs e)
         {
-            if (language == "en") {
-                language = "hr";
+            if (translator.lang == "en") {
+                translator.lang = "hr";
 
                 Bitmap img = Resources.flag_en; // Better to change the flag to the opposite language (what the user doesnt know)
                 Bitmap scaled = new(img, btnChangeLanguage.Size.Width + 2, btnChangeLanguage.Size.Height + 2); // +2 because it doesnt fit exactly
                 btnChangeLanguage.Image = scaled;
             } else {
-                language = "en";
+                translator.lang = "en";
 
                 Bitmap img = Resources.flag_hr; // Better to change the flag to the opposite language (what the user doesnt know)
                 Bitmap scaled = new(img, btnChangeLanguage.Size.Width + 2, btnChangeLanguage.Size.Height + 2); // +2 because it doesnt fit exactly
                 btnChangeLanguage.Image = scaled;
             }
 
-            if (selectedModel == "custom") { lblCurrentModel.Text   =   translator.translate("custom", language); } // If the model is not loaded
-            if (selectedModel == "custom") { lblCustomModel.Text    =   translator.translate("Custom model:", language); } // If the model is not loaded
-            if (selectedModel != "custom") { lblCustomModel.Text    =   translator.translate("Change model:", language); } // If the model is loaded
-            btnModelLoad.Text          =   translator.translate("Load", language);
-            btnModelUnload.Text        =   translator.translate("Unload", language);
-            btnStart.Text              =   translator.translate("Start the simulation", language);
-            lblCurrentModelText.Text   =   translator.translate("Current model:", language);
-            lblCustomNPeople.Text      =   String.Format(translator.translate("Number of people: {0}", language), trbNPeople.Value);     // Also set the number to the slider value
-            lblCustomPInfected.Text    =   String.Format(translator.translate("Infected percent: {0}%", language), trbPInfected.Value);  // Also set the number to the slider value
-            lblCustomTInfected.Text    =   String.Format(translator.translate("Infected time: {0} days", language), trbTInfected.Value); // Also set the number to the slider value
-            lblCustomTHealed.Text      =   String.Format(translator.translate("Healed time: {0} days", language), trbTHealed.Value);     // Also set the number to the slider value
+            if (selectedModel == "custom") { lblCurrentModel.Text   =   translator.translate("custom"); }        // If the model is not loaded
+            if (selectedModel == "custom") { lblCustomModel.Text    =   translator.translate("Custom model:"); } // If the model is not loaded
+            if (selectedModel != "custom") { lblCustomModel.Text    =   translator.translate("Change model:"); } // If the model is loaded
+            btnModelLoad.Text          =   translator.translate("Load");
+            btnModelUnload.Text        =   translator.translate("Unload");
+            btnStart.Text              =   translator.translate("Start the simulation");
+            lblCurrentModelText.Text   =   translator.translate("Current model:");
+            lblCustomNPeople.Text      =   String.Format(translator.translate("Number of people: {0}"), trbNPeople.Value);     // Also set the number to the slider value
+            lblCustomPInfected.Text    =   String.Format(translator.translate("Infected percent: {0}%"), trbPInfected.Value);  // Also set the number to the slider value
+            lblCustomTInfected.Text    =   String.Format(translator.translate("Infected time: {0} days"), trbTInfected.Value); // Also set the number to the slider value
+            lblCustomTHealed.Text      =   String.Format(translator.translate("Healed time: {0} days"), trbTHealed.Value);     // Also set the number to the slider value
         }
 
         private void click_btnStart(object sender, EventArgs e)
         {
             model.spawnPeople();
 
-            formSimulation simulation = new formSimulation();
-
+            formSimulation simulation = new ();
+            formResults results = new ();
+            
             // Send the model to the simulation form
-            simulation.setModel(model);
+            simulation.init(model, results);
+            results.init(model, this.translator);
 
             this.Hide();
+
+            // Run the results form on a seperate thread
+            Task.Run(() => results.ShowDialog());
+
             simulation.ShowDialog();
+
             this.Close();
         }
     }
