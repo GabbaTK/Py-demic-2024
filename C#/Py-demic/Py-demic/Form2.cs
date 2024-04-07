@@ -22,7 +22,7 @@
             this.Size = new Size(model.sizeX, model.sizeY + 25); // 25 is around the size of the top bar (title minimize maximize close)
 
             // Set the timer interval to the model frameRate
-            timer.Interval = 1000 / model.simulationRate;
+            timer.Interval = model.simulationRate;
             timer.Start();
 
             model.dayChange = time() + model.secondsPerDay;
@@ -48,9 +48,12 @@
             model.canvas = new(model.sizeX, model.sizeY);
             model.collisionCanvas = new(model.sizeX, model.sizeY);
 
+            model.drawModelLines();
             model.dayUpdate();
             model.dayUpdatedStep(this.results);
             this.Text = $"Py-demic simulation, day {model.day}";
+
+            model.quarantine();
 
             // Step the data for each person
             foreach (Person person in model.people)

@@ -63,12 +63,10 @@ namespace Py_demic
             if (openResult == "null")
             {
                 lblErrorText.Text        =   "Something in the model is null";
-                lblErrorText.ForeColor   =   Color.Red;
                 lblErrorText.Visible     =   true;
             } else
             {
                 lblErrorText.Text        =   $"Model is missing key '{openResult}'";
-                lblErrorText.ForeColor   =   Color.Red;
                 lblErrorText.Visible     =   true;
             }
         }

@@ -1,9 +1,12 @@
 ﻿/*
  * TODO:
  * 
- * - Više simulacija u isto vrijeme (simulacija gradova)
- *      - Putovanje između gradova
- * - Karantena
+ ? - Više simulacija u isto vrijeme (simulacija gradova)
+ ?      - Putovanje između gradova
+ * + Karantena
+ *     - Karantena završava nakon xxx
+ * + Rute
+ * - Cijepljenje tijekom simulacije
  * 
  */
 
@@ -35,14 +38,16 @@ namespace Py_demic
         public double infectiveChance = 100;
         public double lethalityChance = 0;
         public int? vaccineTime;
-        public List<Person>? people = new(); // The actual people classes
-        public int simulationRate = 45;
+        public List<Person> people = new(); // The actual people classes
+        public int simulationRate = 22;
         public int secondsPerDay = 5; // The number of seconds in a simulation day
         public double coughChance = 0;
         public int coughRange = 0;
         public double coughTime = 0;
         public List<int> coughInfectionDropoff = new() { 0, 0 };
         public List<Dictionary<String, Double>> coughs = new();
+        public List<Dictionary<String, Object>>? routes;
+        public int quarantinePercent = 200; // If the infected percent is greater than this, quarantine is started (200 should stop the quarantine from happening)
 
         // Data for custom models
         public int infectedPercentage = 0;
@@ -56,6 +61,9 @@ namespace Py_demic
         // Variable used in multiple functions, so define it once
         private Color colorEmpty = Color.FromArgb(0, 0, 0, 0);
         private Random rand = new();
+
+        // Other stuff
+        Dictionary<String, JsonElement>? rawModel;
 
         private double time()
         {
@@ -135,6 +143,8 @@ namespace Py_demic
             String modelContent = File.ReadAllText(modelName);
             Dictionary<String, JsonElement>? model = JsonSerializer.Deserialize<Dictionary<String, JsonElement>>(modelContent);
 
+            this.rawModel = model;
+
             if (model == null ) { return "null"; }
 
             // Return the missing key if its missing
@@ -157,6 +167,7 @@ namespace Py_demic
             this.peopleScale         =   model["people_scale"].GetDouble();
             this.peopleTravelSpeed   =   model["travel_speed"].GetDouble();
 
+            // Check if all the lines are valid, then draw them in another function
             if (model.ContainsKey("lines"))
             {
                 foreach (JsonElement drawLineJsonElement in model["lines"].EnumerateArray())
@@ -170,23 +181,11 @@ namespace Py_demic
                     if (!drawLine.ContainsKey("thickness")) { return "thickness"; }
 
                     // Gets each elements raw data, then converts that raw json data to a List<int> using JsonSerialiter.Deserialize
-                    List<int> color        =   JsonSerializer.Deserialize<List<int>>(drawLine["color"].GetRawText());
-                    List<int> drawLineP1   =   JsonSerializer.Deserialize<List<int>>(drawLine["P1"].GetRawText());
-                    List<int> drawLineP2   =   JsonSerializer.Deserialize<List<int>>(drawLine["P2"].GetRawText());
+                    List<int> color = JsonSerializer.Deserialize<List<int>>(drawLine["color"].GetRawText());
+                    List<int> drawLineP1 = JsonSerializer.Deserialize<List<int>>(drawLine["P1"].GetRawText());
+                    List<int> drawLineP2 = JsonSerializer.Deserialize<List<int>>(drawLine["P2"].GetRawText());
 
                     if (color == null || drawLineP1 == null || drawLineP2 == null) { return "null"; }
-
-                    // Clamp the values between 0 and edges
-                    // 500 is half the size of the person model X
-                    // 1000 is half the size of the person model Y
-                    int clampedAX = Math.Clamp(drawLineP1[0] - (int)(500 * model["people_scale"].GetDouble()), 0, this.sizeX - 1); // This will be used in the collision canvas, the collision detection is in the middle of the person, so I removed the scale of the person from the position of the line to effectively create an invisible barrier
-                    int clampedAY = Math.Clamp(drawLineP1[1] - (int)(1000 * model["people_scale"].GetDouble()), 0, this.sizeY - 1); // This will be used in the collision canvas, the collision detection is in the middle of the person, so I removed the scale of the person from the position of the line to effectively create an invisible barrier
-                    int clampedBX = Math.Clamp(drawLineP2[0] + (int)(500 * model["people_scale"].GetDouble()), 0, this.sizeX - 1); // This will be used in the collision canvas, the collision detection is in the middle of the person, so I added the scale of the person from the position of the line to effectively create an invisible barrier
-                    int clampedBY = Math.Clamp(drawLineP2[1] + (int)(1000 * model["people_scale"].GetDouble()), 0, this.sizeY - 1); // This will be used in the collision canvas, the collision detection is in the middle of the person, so I added the scale of the person from the position of the line to effectively create an invisible barrier
-
-                    Pen pen = new(Color.FromArgb(color[0], color[1], color[2]), drawLine["thickness"].GetInt32());
-                    using (Graphics graphics = Graphics.FromImage(this.canvas))            { graphics.DrawLine(pen, drawLineP1[0], drawLineP1[1], drawLineP2[0], drawLineP2[1]); }
-                    using (Graphics graphics = Graphics.FromImage(this.collisionCanvas))   { graphics.DrawRectangle(pen, clampedAX, clampedAY, clampedBX - clampedAX, clampedBY - clampedAY); }
                 }
             }
 
@@ -239,12 +238,78 @@ namespace Py_demic
             if (model.ContainsKey("cough_infection_dropoff"))
             {
                 // Converts a jsonElement containing List<int> to an actual List<int>
-                this.coughInfectionDropoff = model["cough_infection_dropoff"].EnumerateArray().Select(element => element.GetInt32()).ToList();
+                this.coughInfectionDropoff = JsonSerializer.Deserialize<List<int>>(model["cough_infection_dropoff"].GetRawText());
+            }
+            if (model.ContainsKey("routes"))
+            {
+                this.routes = new();
+
+                List<Dictionary<String, JsonElement>> routes = JsonSerializer.Deserialize<List<Dictionary<String, JsonElement>>>(model["routes"]);
+
+                foreach (Dictionary<String, JsonElement> route in routes)
+                {
+                    Dictionary<String, Object> processedRoute = new()
+                    {
+                        { "id", route["id"].GetInt32() },
+                        { "order", JsonSerializer.Deserialize<List<int>>(route["order"].GetRawText()) },
+                        { "delays", JsonSerializer.Deserialize<List<int>>(route["delays"].GetRawText()) },
+                        { "waypoints", new List<Object>() }
+                    };
+
+                    List<Dictionary<String, JsonElement>> waypoints = JsonSerializer.Deserialize<List<Dictionary<String, JsonElement>>>(route["waypoints"].GetRawText());
+
+                    foreach (Dictionary<String, JsonElement> waypoint in waypoints)
+                    {
+                        ((List<Object>)processedRoute["waypoints"]).Add(new Dictionary<String, Object>()
+                        {
+                            { "id", waypoint["id"].GetInt32() },
+                            { "pos", JsonSerializer.Deserialize<List<int>>(waypoint["pos"].GetRawText()) },
+                            { "range", waypoint["range"].GetInt32() }
+                        });
+                    }
+
+                    this.routes.Add(processedRoute);
+                }
+            }
+            if (model.ContainsKey("quarantine_percent"))
+            {
+                this.quarantinePercent = model["quarantine_percent"].GetInt32();
             }
 
             this.type = "load";
 
             return "none";
+        }
+
+        public void drawModelLines()
+        {
+            if (this.rawModel == null) { return; }
+
+            if (this.rawModel.ContainsKey("lines"))
+            {
+                foreach (JsonElement drawLineJsonElement in this.rawModel["lines"].EnumerateArray())
+                {
+                    // Converts a jsonElement containing Dictionary<String, JsonElement> to an actual Dictionary<String, JsonElement>
+                    Dictionary<String, JsonElement> drawLine = JsonSerializer.Deserialize<Dictionary<String, JsonElement>>(drawLineJsonElement.GetRawText());
+
+                    // Gets each elements raw data, then converts that raw json data to a List<int> using JsonSerialiter.Deserialize
+                    List<int> color = JsonSerializer.Deserialize<List<int>>(drawLine["color"].GetRawText());
+                    List<int> drawLineP1 = JsonSerializer.Deserialize<List<int>>(drawLine["P1"].GetRawText());
+                    List<int> drawLineP2 = JsonSerializer.Deserialize<List<int>>(drawLine["P2"].GetRawText());
+
+                    // Clamp the values between 0 and edges
+                    // 500 is half the size of the person model X
+                    // 1000 is half the size of the person model Y
+                    int clampedAX = Math.Clamp(drawLineP1[0] - (int)(500 * this.rawModel["people_scale"].GetDouble()), 0, this.sizeX - 1); // This will be used in the collision canvas, the collision detection is in the middle of the person, so I removed the scale of the person from the position of the line to effectively create an invisible barrier
+                    int clampedAY = Math.Clamp(drawLineP1[1] - (int)(1000 * this.rawModel["people_scale"].GetDouble()), 0, this.sizeY - 1); // This will be used in the collision canvas, the collision detection is in the middle of the person, so I removed the scale of the person from the position of the line to effectively create an invisible barrier
+                    int clampedBX = Math.Clamp(drawLineP2[0] + (int)(500 * this.rawModel["people_scale"].GetDouble()), 0, this.sizeX - 1); // This will be used in the collision canvas, the collision detection is in the middle of the person, so I added the scale of the person from the position of the line to effectively create an invisible barrier
+                    int clampedBY = Math.Clamp(drawLineP2[1] + (int)(1000 * this.rawModel["people_scale"].GetDouble()), 0, this.sizeY - 1); // This will be used in the collision canvas, the collision detection is in the middle of the person, so I added the scale of the person from the position of the line to effectively create an invisible barrier
+
+                    Pen pen = new(Color.FromArgb(color[0], color[1], color[2]), drawLine["thickness"].GetInt32());
+                    using (Graphics graphics = Graphics.FromImage(this.canvas)) { graphics.DrawLine(pen, drawLineP1[0], drawLineP1[1], drawLineP2[0], drawLineP2[1]); }
+                    using (Graphics graphics = Graphics.FromImage(this.collisionCanvas)) { graphics.DrawRectangle(pen, clampedAX, clampedAY, clampedBX - clampedAX, clampedBY - clampedAY); }
+                }
+            }
         }
 
         public void spawnPeople()
@@ -259,8 +324,11 @@ namespace Py_demic
                     // Get the elements raw data, then converts that raw json data to a Dictionary<String, JsonElement> using JsonSerialiter.Deserialize
                     Dictionary<String, JsonElement> area = JsonSerializer.Deserialize<Dictionary<String, JsonElement>>(jsonArea.GetRawText());
 
+                    int areaRouteId = 0;
                     int peopleInArea = (int)(this.NOfpeople * (area["probability"].GetInt32() / 100.0)); // Calculate the amount of people for each area if splitting evenly by the probability
                     int personId = 0;
+
+                    if (area.ContainsKey("id")) { areaRouteId = (int)area["id"].GetInt32(); }
 
                     for (int personIdInArea = 0; personIdInArea < peopleInArea; personIdInArea++)
                     {
@@ -303,10 +371,17 @@ namespace Py_demic
                             {
                                 // The person is not too close and can be spawned
                                 // Add some other data to the person
-                                personSpawning.lastX = posX;
-                                personSpawning.lastY = posY;
-                                personSpawning.gotoX = posX;
-                                personSpawning.gotoY = posY;
+                                personSpawning.routeId          =   areaRouteId;
+                                personSpawning.lastX            =   posX;
+                                personSpawning.lastY            =   posY;
+                                personSpawning.gotoX            =   posX;
+                                personSpawning.gotoY            =   posY;
+                                personSpawning.changeGotoMaxX   =   this.sizeX;
+                                personSpawning.changeGotoMaxY   =   this.sizeY;
+                                personSpawning.originAreaMinX   =   areaStart[0];
+                                personSpawning.originAreaMinY   =   areaStart[1];
+                                personSpawning.originAreaMaxX   =   areaEnd[0];
+                                personSpawning.originAreaMaxY   =   areaEnd[1];
 
                                 if (area.ContainsKey("infected"))
                                 {
@@ -346,13 +421,14 @@ namespace Py_demic
                 }
             } else if (this.type == "custom")
             {
-                // On loading the model it creates the canvas, but here we are using the custom model settings
-                // So it doesnt create the canvas
-                // And the personScale is null, but the settings here use it as if it was 0.025, so I set it to that
-                this.sizeX               =   1250;
-                this.sizeY               =   1250;
-                this.canvas              =   new Bitmap(1250, 1250);
-                this.collisionCanvas     =   new Bitmap(1250, 1250);
+                // Get the screen size to adjust the custom model size
+                int width = Screen.PrimaryScreen.Bounds.Width;
+                int height = Screen.PrimaryScreen.Bounds.Height;
+
+                this.sizeX               =   width - 100;
+                this.sizeY               =   height - 100;
+                this.canvas              =   new Bitmap(this.sizeX, this.sizeY);
+                this.collisionCanvas     =   new Bitmap(this.sizeX, this.sizeY);
                 this.peopleScale         =   0.025;
                 this.peopleTravelSpeed   =   2;
                 this.randomness          =   5;
@@ -362,9 +438,8 @@ namespace Py_demic
                 {
                     while (true)
                     {
-                        // The canvas size for the custom model is 1250x1250, 
-                        int posX = rand.Next(25, 1225); // The 25 and 1225 are the smaller boundries using the person model scale of 25x50 
-                        int posY = rand.Next(50, 1200); // The 50 and 1200 are the smaller boundries using the person model scale of 25x50
+                        int posX = rand.Next(25, this.sizeX - 25); // For the people scale it is needed to remove the width scale
+                        int posY = rand.Next(50, this.sizeY - 50); // For the people scale it is needed to remove the height scale
 
                         bool tooClose = false;
 
@@ -393,10 +468,10 @@ namespace Py_demic
 
                         if (!tooClose)
                         {
-                            personSpawning.lastX = posX;
-                            personSpawning.lastY = posY;
-                            personSpawning.gotoX = posX;
-                            personSpawning.gotoY = posY;
+                            personSpawning.lastX   =   posX;
+                            personSpawning.lastY   =   posY;
+                            personSpawning.gotoX   =   posX;
+                            personSpawning.gotoY   =   posY;
 
                             if (infectedPeople > 0)
                             {
@@ -447,8 +522,6 @@ namespace Py_demic
 
         public Bitmap renderFrame()
         {
-            Bitmap drawingBitmap = (Bitmap)this.canvas.Clone();
-
             // Remove the cough if the time has expired
             List<Dictionary<String, Double>> unExpiredCoughs = new();
 
@@ -463,10 +536,34 @@ namespace Py_demic
 
             this.coughs = unExpiredCoughs;
 
-            drawingBitmap = drawCoughs();
+            Bitmap drawingBitmap = drawCoughs();
             drawingBitmap = drawPeople(drawingBitmap);
 
             return drawingBitmap;
+        }
+
+        public void quarantine()
+        {
+            int normalPeople = 0;
+            int infectedPeople = 0;
+
+            foreach (Person person in this.people)
+            {
+                if (person.type == "infected") { infectedPeople++; } else { normalPeople++; }
+            }
+
+            double infectedPercent = (double)(infectedPeople) / (normalPeople + infectedPeople) * 100;
+
+            if (infectedPercent >= this.quarantinePercent)
+            {
+                foreach (Person person in this.people)
+                {
+                    person.changeGotoMinX = person.originAreaMinX;
+                    person.changeGotoMinY = person.originAreaMinY;
+                    person.changeGotoMaxX = person.originAreaMaxX;
+                    person.changeGotoMaxY = person.originAreaMaxY;
+                }
+            }
         }
     }
 }

@@ -23,6 +23,7 @@
                 { "Dead: {0}", "Preminuli: {0}" },
                 { "Normal: {0}", "Normalni: {0}" },
                 { "Infected: {0}", "Zaraženi: {0}" },
+                { "Healed: {0}", "Preboljeni: {0}" },
                 { "Vaccinated: {0}", "Cijepljeni: {0}" }
             };
 
