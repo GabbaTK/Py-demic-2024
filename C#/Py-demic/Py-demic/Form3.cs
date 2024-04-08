@@ -46,7 +46,7 @@
                 }
             }
 
-            int alivePeople = normalPeople + infectedPeople + vaccinatedPeople;
+            int alivePeople = normalPeople + infectedPeople + vaccinatedPeople + healedPeople;
 
             lblSimResAlive.BeginInvoke((MethodInvoker)delegate ()        { lblSimResAlive.Text        =   String.Format(translator.translate("Alive: {0}"),        alivePeople.ToString()); });
             lblSimResDead.BeginInvoke((MethodInvoker)delegate ()         { lblSimResDead.Text         =   String.Format(translator.translate("Dead: {0}"),         deadPeople.ToString()); });
