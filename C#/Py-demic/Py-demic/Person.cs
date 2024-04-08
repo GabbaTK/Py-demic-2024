@@ -275,7 +275,7 @@
                     this.nextWaypoint   =   true;
                     // Set the specified delay before getting the new waypoint
                     this.waiting        =   true;
-                    this.waitingTime    =   ((List<int>)this.route["delays"])[this.waypointId];
+                    this.waitingTime    =   ((List<int>)this.route["delays"])[this.waypointId] + time();
                 }
             }
         }
