@@ -270,7 +270,7 @@
                 }
 
                 // Check if it got to the waypoint
-                else if (pointDistance(this.x, this.y, this.gotoX, this.gotoY) < 1)
+                else if (pointDistance(this.x, this.y, this.gotoX, this.gotoY) < 2)
                 {
                     this.nextWaypoint   =   true;
                     // Set the specified delay before getting the new waypoint
