@@ -164,7 +164,7 @@
 
         private void changeGoto(Model model)
         {
-            if (pointDistance(this.x, this.y, this.gotoX, this.gotoY) < 1)
+            if (pointDistance(this.x, this.y, this.gotoX, this.gotoY) < 2)
             {
                 // So the people dont move out of bound I subtract half of the size of the person from the edges to ensure that they are always inside the border
                 this.gotoX = rand.Next(this.changeGotoMinX + (int)(500 * model.peopleScale), this.changeGotoMaxX - (int)(500 * model.peopleScale));
